@@ -5,9 +5,9 @@ import { ConfigService } from '@nestjs/config';
 import * as mime from 'mime';
 import * as path from 'path';
 import * as fs from 'fs';
-import * as contentDisposition from 'content-disposition';
-import { createCipheriv, randomBytes, scrypt } from 'crypto';
-import { Response } from 'express';
+import * as contentDisposition from 'content-disposition'
+import * as iconvLite from 'iconv-lite'
+import { Request, Response } from 'express';
 import { FileValidationDto } from './dto/user.dto';
 
 @Injectable()
@@ -30,8 +30,9 @@ export class TaxService {
     const FilePaths = await this.findFilePaths(year, empIds)
 
     const isValid = await this.validateFiles(year, FilePaths)
-
+    console.log(isValid)
     if(!isValid.result){
+      console.log("++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
       throw new HttpException({
         status: HttpStatus.NOT_FOUND,
         data: isValid.hasInvalidFileArr,
@@ -44,7 +45,7 @@ export class TaxService {
       await this.zipFiles(userAgent, await this.setResponseHeader(userAgent, res, `${year}.zip`), year, FilePaths)
     }else{
       res = await this.setResponseHeader(userAgent, res, FilePaths[0])
-      const filePath = FilePaths[0]
+      const filePath = `${this.config.get('ATTACH_SAVE_PATH')}/${year}/${FilePaths[0]}`
       this.hasFile(filePath)
       const filestream = fs.createReadStream(filePath);
       filestream.pipe(res);
@@ -61,7 +62,7 @@ export class TaxService {
     return fileNameArr;
   }
 
-  private async validateFiles(year: string, filePaths: string[] ): Promise<FileValidationDto> {
+  async validateFiles(year: string, filePaths: string[] ): Promise<FileValidationDto> {
     let result = true
     let invalidFileArr = []
     for await (let filePath of filePaths) {
@@ -76,7 +77,7 @@ export class TaxService {
     }
   }
 
-  private async zipFiles(userAgent: string, res: Response, year: string, filePaths: string[]):  Promise<void> {
+  async zipFiles(userAgent: string, res: Response, year: string, filePaths: string[]):  Promise<void> {
 
     const zip = archive('zip');
     for await (let filePath of filePaths) {
@@ -118,14 +119,20 @@ export class TaxService {
     return empIds.length === 0 || empIds.length === undefined || empIds.length === null
   }
 
-  async findFileNames (year: string, empIds: string[]): Promise<string[]> {
-    let fileNameArr = []
-    let filePathArr = await this.findFilePaths(year, empIds)
-    for await (let filepath of filePathArr) {
-      fileNameArr.push(path.basename(filepath))
-    }
-    return fileNameArr;
-  }
+  private getDownloadFilename(header: string, fileName) {
 
+    if (header.includes("MSIE") || header.includes("Trident")) {
+      return encodeURIComponent(fileName).replace(/\\+/gi, "%20")
+    } else if (header.includes("Chrome")) {
+      console.log(iconvLite.decode(iconvLite.encode(fileName, "UTF-8"), 'ISO-8859-1'))
+      return iconvLite.decode(iconvLite.encode(fileName, "UTF-8"), 'ISO-8859-1')
+    } else if (header.includes("Opera")) {
+      return iconvLite.decode(iconvLite.encode(fileName, "UTF-8"), 'ISO-8859-1')
+    } else if (header.includes("Firefox")) {
+      return iconvLite.decode(iconvLite.encode(fileName, "UTF-8"), 'ISO-8859-1')
+    }
+
+    return fileName;
+  }
 }
 
